@@ -13,16 +13,21 @@ class FileProcessor:
             elif ext == '.pdf':
                 text = ""
                 with pdfplumber.open(file_path) as pdf:
-                    if len(pdf.pages) == 0:
+                    num_pages = len(pdf.pages)
+                    if num_pages == 0:
                         print(f"Warning: PDF {file_path} has no pages")
                         return None
-                    for page in pdf.pages:
+                    print(f"[INFO] Processing PDF with {num_pages} pages...")
+                    for page_num, page in enumerate(pdf.pages, 1):
                         content = page.extract_text()
                         if content: 
                             text += content + "\n"
+                            if page_num <= 2:  # Log first 2 pages
+                                print(f"  Page {page_num}: {len(content)} characters extracted")
                 if not text.strip():
                     print(f"Warning: No text extracted from PDF {file_path}")
                     return None
+                print(f"[INFO] Total text extracted: {len(text)} characters")
                 return text
             elif ext == '.docx':
                 doc = Document(file_path)

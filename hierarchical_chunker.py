@@ -252,78 +252,142 @@ class HierarchicalChunker:
     
     def _process_plain_text(self, text: str, course_id: str, course_name: str) -> Dict[str, List[Dict]]:
         """
-        Process documents without headings by splitting into paragraphs.
+        Process documents without headings by splitting into manageable chunks.
+        Uses character-based chunking with overlap for better context preservation.
         """
-        # Split by paragraphs
-        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-        
-        if not paragraphs:
-            # Try splitting by newlines if no double-newlines found
-            paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
-        
-        if not paragraphs:
+        # Clean text
+        text = text.strip()
+        if not text:
             print("[WARNING] No content found in document")
             return {'description': [], 'header': [], 'detail': []}
         
         chunks = {'description': [], 'header': [], 'detail': []}
         
-        # Group paragraphs into chunks (e.g., 3-5 paragraphs per chunk)
-        chunk_size = 5
-        for i in range(0, len(paragraphs), chunk_size):
-            chunk_paras = paragraphs[i:i+chunk_size]
-            chunk_content = '\n\n'.join(chunk_paras)
+        # Try to split by paragraphs first (double newlines)
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip() and len(p.strip()) > 20]
+        
+        # If very few paragraphs found, try single newlines
+        if len(paragraphs) < 3:
+            paragraphs = [p.strip() for p in text.split('\n') if p.strip() and len(p.strip()) > 20]
+        
+        # If still few paragraphs, use character-based chunking
+        if len(paragraphs) < 3:
+            print(f"[INFO] Using character-based chunking. Text length: {len(text)} chars")
+            chunk_size = 800   # ~150-200 words per chunk
+            overlap = 150      # 150 char overlap for context
+            
+            paragraphs = []
+            start = 0
+            while start < len(text):
+                end = start + chunk_size
+                # Try to break at sentence boundary
+                if end < len(text):
+                    # Look for sentence endings
+                    for punct in ['. ', '.\n', '? ', '!\n', '! ']:
+                        last_punct = text[start:end].rfind(punct)
+                        if last_punct > chunk_size // 2:  # At least halfway through
+                            end = start + last_punct + 1
+                            break
+                
+                chunk_text = text[start:end].strip()
+                if chunk_text:
+                    paragraphs.append(chunk_text)
+                start = end - overlap if end < len(text) else end
+        
+        print(f"[INFO] Split document into {len(paragraphs)} chunks for plain text processing")
+        
+        # Group paragraphs into sections
+        # Aim for sections of 2-4 paragraphs/chunks each
+        if len(paragraphs) <= 4:
+            section_size = 1  # Small doc: each para is its own section
+        elif len(paragraphs) <= 12:
+            section_size = 2  # Medium doc: 2 paras per section
+        else:
+            section_size = 3  # Large doc: 3 paras per section
+        
+        section_num = 0
+        
+        for i in range(0, len(paragraphs), section_size):
+            section_paras = paragraphs[i:i+section_size]
+            section_content = '\n\n'.join(section_paras)
             chunk_id = f"chunk_{uuid.uuid4().hex[:8]}"
+            section_num += 1
             
-            # First paragraph as header
-            first_para = chunk_paras[0][:200] + ('...' if len(chunk_paras[0]) > 200 else '')
+            # First 200 chars as preview for header
+            preview = section_paras[0][:200]
+            if len(section_paras[0]) > 200:
+                # Try to cut at word boundary
+                last_space = preview.rfind(' ')
+                if last_space > 150:
+                    preview = preview[:last_space] + '...'
+                else:
+                    preview = preview + '...'
             
-            # Header chunk
+            # Header chunk (preview)
             header_chunk = {
                 'chunk_id': chunk_id + '_header',
                 'course_id': course_id,
                 'chunk_level': 'header',
                 'parent_chunk_id': None,
-                'heading_path': f"Section {i//chunk_size + 1}",
-                'content': first_para,
+                'heading_path': f"{course_name} - Part {section_num}",
+                'content': preview,
                 'metadata': {
                     'heading_level': 1,
                     'has_children': True,
-                    'is_plain_text': True
+                    'is_plain_text': True,
+                    'section_number': section_num
                 }
             }
             chunks['header'].append(header_chunk)
             
-            # Detail chunk
+            # Detail chunk (full content)
             detail_chunk = {
                 'chunk_id': chunk_id + '_detail',
                 'course_id': course_id,
                 'chunk_level': 'detail',
                 'parent_chunk_id': chunk_id + '_header',
-                'heading_path': f"Section {i//chunk_size + 1}",
-                'content': chunk_content,
+                'heading_path': f"{course_name} - Part {section_num}",
+                'content': section_content,
                 'metadata': {
                     'heading_level': 1,
-                    'content_length': len(chunk_content),
-                    'is_plain_text': True
+                    'content_length': len(section_content),
+                    'is_plain_text': True,
+                    'section_number': section_num
                 }
             }
             chunks['detail'].append(detail_chunk)
         
-        # Create a single description for the whole document
-        desc_content = text[:500] + ('...' if len(text) > 500 else '')
-        desc_chunk = {
-            'chunk_id': f"desc_{uuid.uuid4().hex[:8]}",
-            'course_id': course_id,
-            'chunk_level': 'description',
-            'parent_chunk_id': None,
-            'heading_path': course_name,
-            'content': f"{course_name}\n\n{desc_content}",
-            'metadata': {
-                'is_summary': True,
-                'covers_chunks': len(chunks['header']),
-                'is_plain_text': True
+        # Create description chunks (one per 5 sections for better granularity)
+        desc_sections = max(1, len(chunks['header']) // 5)
+        for desc_idx in range(desc_sections):
+            start_section = desc_idx * 5
+            end_section = min((desc_idx + 1) * 5, len(paragraphs))
+            desc_text = '\n\n'.join(paragraphs[start_section:end_section])
+            
+            # Create summary (first 400 chars)
+            summary = desc_text[:400]
+            if len(desc_text) > 400:
+                last_space = summary.rfind(' ')
+                if last_space > 300:
+                    summary = summary[:last_space] + '...'
+                else:
+                    summary = summary + '...'
+            
+            desc_chunk = {
+                'chunk_id': f"desc_{uuid.uuid4().hex[:8]}",
+                'course_id': course_id,
+                'chunk_level': 'description',
+                'parent_chunk_id': None,
+                'heading_path': f"{course_name}" + (f" - Overview {desc_idx + 1}" if desc_sections > 1 else ""),
+                'content': summary,
+                'metadata': {
+                    'is_summary': True,
+                    'covers_chunks': min(5, len(chunks['header']) - start_section),
+                    'is_plain_text': True
+                }
             }
-        }
-        chunks['description'].append(desc_chunk)
+            chunks['description'].append(desc_chunk)
+        
+        print(f"[INFO] Created {len(chunks['description'])} descriptions, {len(chunks['header'])} headers, {len(chunks['detail'])} details")
         
         return chunks
