@@ -36,11 +36,25 @@ class KeywordSearch:
         Args:
             chunks: List of chunk dicts with 'chunk_id' and 'content' keys
         """
+        if not chunks:
+            print("Warning: No chunks provided to build_index()")
+            self.chunk_ids = []
+            self.documents = []
+            self.bm25 = None
+            return
+        
         self.chunk_ids = [chunk['chunk_id'] for chunk in chunks]
         self.documents = [chunk['content'] for chunk in chunks]
         
         # Tokenize all documents
         tokenized_docs = [self._tokenize(doc) for doc in self.documents]
+        
+        # Check if all documents are empty (no tokens)
+        total_tokens = sum(len(doc) for doc in tokenized_docs)
+        if total_tokens == 0:
+            print("Warning: All documents are empty (no tokens found). Cannot build BM25 index.")
+            self.bm25 = None
+            return
         
         # Build BM25 index
         self.bm25 = BM25Okapi(tokenized_docs)

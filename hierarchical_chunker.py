@@ -236,11 +236,94 @@ class HierarchicalChunker:
         # Parse headings
         heading_tree = self.parse_headings(text)
         
+        # Handle documents without headings (e.g., plain text PDFs)
+        if not heading_tree:
+            print("[INFO] No headings found. Creating chunks from plain text...")
+            return self._process_plain_text(text, course_id, course_name)
+        
         # Generate header and detail chunks
         chunks = self.chunk_by_level(heading_tree, course_id)
         
         # Generate description chunks
         descriptions = self.generate_descriptions(chunks, course_name)
         chunks['description'] = descriptions
+        
+        return chunks
+    
+    def _process_plain_text(self, text: str, course_id: str, course_name: str) -> Dict[str, List[Dict]]:
+        """
+        Process documents without headings by splitting into paragraphs.
+        """
+        # Split by paragraphs
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        
+        if not paragraphs:
+            # Try splitting by newlines if no double-newlines found
+            paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+        
+        if not paragraphs:
+            print("[WARNING] No content found in document")
+            return {'description': [], 'header': [], 'detail': []}
+        
+        chunks = {'description': [], 'header': [], 'detail': []}
+        
+        # Group paragraphs into chunks (e.g., 3-5 paragraphs per chunk)
+        chunk_size = 5
+        for i in range(0, len(paragraphs), chunk_size):
+            chunk_paras = paragraphs[i:i+chunk_size]
+            chunk_content = '\n\n'.join(chunk_paras)
+            chunk_id = f"chunk_{uuid.uuid4().hex[:8]}"
+            
+            # First paragraph as header
+            first_para = chunk_paras[0][:200] + ('...' if len(chunk_paras[0]) > 200 else '')
+            
+            # Header chunk
+            header_chunk = {
+                'chunk_id': chunk_id + '_header',
+                'course_id': course_id,
+                'chunk_level': 'header',
+                'parent_chunk_id': None,
+                'heading_path': f"Section {i//chunk_size + 1}",
+                'content': first_para,
+                'metadata': {
+                    'heading_level': 1,
+                    'has_children': True,
+                    'is_plain_text': True
+                }
+            }
+            chunks['header'].append(header_chunk)
+            
+            # Detail chunk
+            detail_chunk = {
+                'chunk_id': chunk_id + '_detail',
+                'course_id': course_id,
+                'chunk_level': 'detail',
+                'parent_chunk_id': chunk_id + '_header',
+                'heading_path': f"Section {i//chunk_size + 1}",
+                'content': chunk_content,
+                'metadata': {
+                    'heading_level': 1,
+                    'content_length': len(chunk_content),
+                    'is_plain_text': True
+                }
+            }
+            chunks['detail'].append(detail_chunk)
+        
+        # Create a single description for the whole document
+        desc_content = text[:500] + ('...' if len(text) > 500 else '')
+        desc_chunk = {
+            'chunk_id': f"desc_{uuid.uuid4().hex[:8]}",
+            'course_id': course_id,
+            'chunk_level': 'description',
+            'parent_chunk_id': None,
+            'heading_path': course_name,
+            'content': f"{course_name}\n\n{desc_content}",
+            'metadata': {
+                'is_summary': True,
+                'covers_chunks': len(chunks['header']),
+                'is_plain_text': True
+            }
+        }
+        chunks['description'].append(desc_chunk)
         
         return chunks

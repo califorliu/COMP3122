@@ -82,7 +82,10 @@ class KnowledgeBaseSystem:
         content = FileProcessor.process_file(file_path)
         
         if not content:
-            return {'success': False, 'error': 'Failed to read file'}
+            return {'success': False, 'error': 'Failed to read file or file is empty'}
+        
+        if not content.strip():
+            return {'success': False, 'error': 'File content is empty or contains no text'}
         
         # Parse hierarchical chunks
         print("[INFO] Parsing hierarchical structure...")
@@ -94,6 +97,9 @@ class KnowledgeBaseSystem:
         
         total_chunks = sum(len(chunks_dict[level]) for level in chunks_dict)
         print(f"[INFO] Generated {total_chunks} chunks across 3 levels")
+        
+        if total_chunks == 0:
+            return {'success': False, 'error': 'No chunks generated from document. Document may not have proper structure or extractable text.'}
         
         # Save chunks to LocalDB
         self.db.save_knowledge_chunks(course_id, chunks_dict)
