@@ -192,31 +192,61 @@ Generate 3-5 interview Q&A pairs with follow-ups."""
             'learn_more_suggestions': self._suggest_next_topics(chunks, limited_chunks)
         }
     
-    def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """Call LLM API."""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": self.model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "temperature": self.temperature
-            }
-            
-            with httpx.Client(timeout=self.timeout) as client:
-                response = client.post(self.api_url, headers=headers, json=payload)
-                response.raise_for_status()
-                result = response.json()
-                return result['choices'][0]['message']['content']
+    def _call_llm(self, system_prompt: str, user_prompt: str, max_retries: int = 2) -> str:
+        """
+        Call LLM API with retry logic for timeout errors.
+        
+        Args:
+            system_prompt: System prompt
+            user_prompt: User prompt
+            max_retries: Maximum number of retry attempts
+        
+        Returns:
+            Generated response text
+        """
+        last_error = None
+        
+        for attempt in range(max_retries + 1):
+            try:
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": self.model_name,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "temperature": self.temperature
+                }
                 
-        except Exception as e:
-            print(f"LLM generation error: {e}")
-            return f"Error generating response: {str(e)}"
+                if attempt > 0:
+                    print(f"[INFO] Retrying LLM call (attempt {attempt + 1}/{max_retries + 1})...")
+                
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.post(self.api_url, headers=headers, json=payload)
+                    response.raise_for_status()
+                    result = response.json()
+                    return result['choices'][0]['message']['content']
+                    
+            except httpx.ReadTimeout as e:
+                last_error = f"Request timed out after {self.timeout} seconds"
+                print(f"[WARNING] {last_error}")
+                if attempt < max_retries:
+                    print(f"[INFO] Will retry...")
+                continue
+            except httpx.HTTPStatusError as e:
+                last_error = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
+                print(f"[ERROR] LLM API error: {last_error}")
+                break  # Don't retry HTTP errors
+            except Exception as e:
+                last_error = str(e)
+                print(f"[ERROR] LLM generation error: {e}")
+                break
+        
+        # All retries failed
+        return f"I apologize, but I'm having trouble generating a response right now. The system timed out after multiple attempts. Please try:\n\n1. Asking a more specific question\n2. Trying again in a moment\n3. Checking your network connection\n\nTechnical details: {last_error}"
     
     def _format_chunks_for_context(self, chunks: List[Dict]) -> str:
         """Format chunks into context string."""

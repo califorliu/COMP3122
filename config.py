@@ -34,7 +34,7 @@ class LLMConfig:
     API_URL = os.getenv("LLM_API_URL", "https://api.moonshot.cn/v1/chat/completions")
     API_KEY = os.getenv("LLM_API_KEY")
     TEMPERATURE = 0.3
-    TIMEOUT = 60.0
+    TIMEOUT = 120.0  # Increased from 60 to 120 seconds for complex queries
 
 class SearchConfig:
     # Hybrid Search Weights
@@ -49,14 +49,14 @@ class SearchConfig:
     RELEVANCE_THRESHOLD = float(os.getenv("RELEVANCE_THRESHOLD", "0.7"))
 
 class GenerationConfig:
-    # Context Window
-    MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "100000"))
+    # Context Window (reduced for better performance)
+    MAX_CONTEXT_TOKENS = int(os.getenv("MAX_CONTEXT_TOKENS", "50000"))  # Reduced from 100000
     CONVERSATION_HISTORY_TURNS = int(os.getenv("CONVERSATION_HISTORY_TURNS", "3"))
     
     # Route-specific Limits
     QUICK_ANSWER_MAX_CHUNKS = int(os.getenv("QUICK_ANSWER_MAX_CHUNKS", "3"))
-    TUTORIAL_MAX_CHUNKS = int(os.getenv("TUTORIAL_MAX_CHUNKS", "10"))
-    DEEPDIVE_MAX_CHUNKS = int(os.getenv("DEEPDIVE_MAX_CHUNKS", "20"))
+    TUTORIAL_MAX_CHUNKS = int(os.getenv("TUTORIAL_MAX_CHUNKS", "8"))  # Reduced from 10
+    DEEPDIVE_MAX_CHUNKS = int(os.getenv("DEEPDIVE_MAX_CHUNKS", "15"))  # Reduced from 20
 
 class ChromaDBConfig:
     PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./data/chromadb")

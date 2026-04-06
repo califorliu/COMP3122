@@ -36,18 +36,25 @@ class SemanticSearch:
         # Generate query embedding
         query_embedding = self.embedding_client.embed_text(query)
         
-        # Build metadata filter
-        where_filter = {}
-        if course_id:
-            where_filter['course_id'] = course_id
-        if chunk_level:
-            where_filter['chunk_level'] = chunk_level
+        # Build metadata filter (ChromaDB requires $and operator for multiple conditions)
+        where_filter = None
+        if course_id and chunk_level:
+            where_filter = {
+                "$and": [
+                    {"course_id": course_id},
+                    {"chunk_level": chunk_level}
+                ]
+            }
+        elif course_id:
+            where_filter = {"course_id": course_id}
+        elif chunk_level:
+            where_filter = {"chunk_level": chunk_level}
         
         # Query ChromaDB
         results = self.vector_store.query_by_vector(
             query_embedding=query_embedding,
             top_k=top_k,
-            where=where_filter if where_filter else None
+            where=where_filter
         )
         
         # Convert distances to similarity scores (ChromaDB returns cosine distance)
@@ -81,18 +88,25 @@ class SemanticSearch:
         # Generate query embedding
         query_embedding = self.embedding_client.embed_text(query)
         
-        # Build metadata filter
-        where_filter = {}
-        if course_id:
-            where_filter['course_id'] = course_id
-        if chunk_level:
-            where_filter['chunk_level'] = chunk_level
+        # Build metadata filter (ChromaDB requires $and operator for multiple conditions)
+        where_filter = None
+        if course_id and chunk_level:
+            where_filter = {
+                "$and": [
+                    {"course_id": course_id},
+                    {"chunk_level": chunk_level}
+                ]
+            }
+        elif course_id:
+            where_filter = {"course_id": course_id}
+        elif chunk_level:
+            where_filter = {"chunk_level": chunk_level}
         
         # Query ChromaDB
         results = self.vector_store.query_by_vector(
             query_embedding=query_embedding,
             top_k=top_k,
-            where=where_filter if where_filter else None
+            where=where_filter
         )
         
         # Combine all data
